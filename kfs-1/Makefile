@@ -60,7 +60,7 @@ run: iso
 
 # Direct boot without GRUB/ISO (Multiboot kernel)
 run-kernel: mykernel.bin
-	qemu-system-i386 -kernel mykernel.bin -m 512M -serial stdio -curses
+	qemu-system-i386 -kernel mykernel.bin -m 512M -serial stdio
 
 clean:
 	rm -f *.o mykernel.bin mykernel.iso
@@ -80,4 +80,8 @@ docker-iso: docker-image
 	docker run --rm -v $(PWD):/src -w /src $(DOCKER_IMAGE) /bin/bash -lc "make clean && make CC=i686-linux-gnu-gcc LD=i686-linux-gnu-ld ASM=nasm ASMFLAGS='-f elf32' CFLAGS='-ffreestanding -fno-builtin -nostdlib -Wall -Wextra -I.' LDFLAGS='-m elf_i386 -T linker.ld' iso"
 
 docker-run: docker-iso
-	docker run --rm -it -v $(PWD):/src -w /src $(DOCKER_IMAGE) /bin/bash -lc "timeout 10s qemu-system-i386 -cdrom mykernel.iso -m 512M -serial stdio -curses || true"
+	docker run --rm -it -v $(PWD):/src -w /src $(DOCKER_IMAGE) /bin/bash -lc "timeout 10s qemu-system-i386 -cdrom mykernel.iso -m 512M -serial stdio -display none || true"
+
+# Docker: run kernel directly (no GRUB/ISO), serial only
+docker-run-kernel: docker-bin
+	docker run --rm -it -v $(PWD):/src -w /src $(DOCKER_IMAGE) /bin/bash -lc "timeout 10s qemu-system-i386 -kernel mykernel.bin -m 512M -serial stdio -display none || true"
