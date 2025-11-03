@@ -26,7 +26,7 @@ static void serial_init(void) {
 static void serial_write_char(char c) {
     const uint16_t base = 0x3F8; // COM1
     // wait for transmitter empty
-    while ((inb(base + 5) & 0x20) == 0) {}
+    while ((inb(base + 5) & 0x20) == 0) {} 
     outb(base + 0, (uint8_t)c);
 }
 

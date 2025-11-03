@@ -8,7 +8,7 @@ SECTIONS
     .multiboot : { *(.multiboot) }
 
     .text : {
-        *(.text)
+        *(.text) 
     }
 
     .data : {
