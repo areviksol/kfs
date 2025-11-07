@@ -1,21 +1,21 @@
-OUTPUT_FORMAT("elf32-i386")
-ENTRY(start)
+OUTPUT_FORMAT("elf32-i386") /* Выходной формат ELF для i386 (32-бит) */
+ENTRY(start) /* Точка входа — метка start из boot.asm */
 
-SECTIONS
+SECTIONS /* Разметка секций в адресном пространстве */
 {
-    . = 0x100000;  /* load at 1 MB */
+    . = 0x100000;  /* Базовый адрес загрузки ядра: 1 МБ */
 
-    .multiboot : { *(.multiboot) }
+    .multiboot : { *(.multiboot) } /* Заголовок Multiboot должен быть рано в образе */
 
-    .text : {
+    .text : { /* Код */
         *(.text) 
     }
 
-    .data : {
+    .data : { /* Инициализированные данные */
         *(.data)
     }
 
-    .bss : {
+    .bss : { /* Неинициализированные данные (включая стек) */
         *(.bss)
     }
 }
