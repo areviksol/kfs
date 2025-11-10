@@ -10,6 +10,8 @@ RUN apt-get update \
         build-essential \
         bison \
         flex \
+        parted \
+        e2fsprogs \
         nasm \
         xorriso \
         grub-common \

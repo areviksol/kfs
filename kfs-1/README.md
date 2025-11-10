@@ -15,7 +15,6 @@
 Это означает, что вам нужно написать небольшой фрагмент кода на ассемблере, который:
 
 Запускается первым, когда GRUB переходит к kernel,
-
 Настраивает состояние процессора (например, стек, сегментные регистры, возможно, переключается в 32-битный режим при необходимости),
 А затем вызывает ваш код на C (основную функцию lernel).
 
@@ -144,3 +143,42 @@ make docker-run-kernel  # собрать и запустить ядро напр
 
 - «Не вижу 42»: проверьте терминал (serial) и/или откройте VGA‑окно (не используйте `-display none`).
 - «ISO не создаётся»: установите `grub-mkrescue` (в Docker уже есть) или пользуйтесь `make docker-run`.
+
+
+## 🍏 macOS CROSS-COMPILER SECTION
+
+```make
+ifeq ($(shell uname),Darwin)
+  ...
+endif
+```
+
+If on macOS, it checks for `i686-elf-gcc`, `i386-elf-gcc`, or `x86_64-elf-gcc`,
+and uses one of them to ensure **32-bit cross-compilation** works.
+
+---
+
+## 🐳 DOCKER TARGETS
+
+| Target                  | What it does                               |
+| ----------------------- | ------------------------------------------ |
+| **`docker-image`**      | Build Docker image with compiler tools.    |
+| **`docker-bin`**        | Build kernel binary inside Docker.         |
+| **`docker-iso`**        | Build ISO image inside Docker.             |
+| **`docker-run`**        | Run ISO in QEMU inside Docker (no GUI).    |
+| **`docker-run-kernel`** | Run kernel directly in QEMU inside Docker. |
+
+---
+
+## 🧾 TL;DR — Quick Summary
+
+| Step | Command           | Purpose                                  |
+| ---- | ----------------- | ---------------------------------------- |
+| 1    | `make`            | Build kernel (`mykernel.bin`)            |
+| 2    | `make iso`        | Build bootable ISO                       |
+| 3    | `make run`        | Run ISO in QEMU                          |
+| 4    | `make run-kernel` | Run kernel directly                      |
+| 5    | `make clean`      | Remove build files                       |
+| 6    | `make docker-*`   | Do all of the above inside Docker safely |
+
+---

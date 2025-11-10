@@ -7,7 +7,6 @@ LD?=ld # Линковщик по умолчанию
 ASMFLAGS=-f elf32 # NASM генерирует 32-битные ELF-объектники
 CFLAGS=-ffreestanding -fno-builtin -fno-stack-protector -nostdlib -Wall -Wextra -I. # Флаги для ядра без стандартной библиотеки
 LDFLAGS=-m elf_i386 -T linker.ld # Линковка под i386, со скриптом linker.ld
-
 # Prefer cross toolchains on macOS to build 32-bit i386 # На macOS пробуем кросс-компиляторы
 ifeq ($(shell uname),Darwin) # Если система Darwin (macOS)
   ifneq (,$(shell command -v i686-elf-gcc 2>/dev/null)) # Если доступен i686-elf-gcc
@@ -31,10 +30,12 @@ OBJ=$(ASM_SRC:.asm=.o) $(C_SRC:.c=.o) # Список объектных файл
 all: mykernel.bin # Цель по умолчанию: собрать ядро в ELF
 
 %.o: %.asm # Правило сборки .o из .asm
-	$(ASM) $(ASMFLAGS) $< -o $@ # NASM компилирует в объектник
+# NASM компилирует в объектник
+	$(ASM) $(ASMFLAGS) $< -o $@ 
 
 %.o: %.c # Правило сборки .o из .c
-	$(CC) $(CFLAGS) -c $< -o $@ # Компиляция C в объектник
+# Компиляция C в объектник
+	$(CC) $(CFLAGS) -c $< -o $@ 
 	
 iso/boot/mykernel.bin: $(OBJ) linker.ld # Линкуем ядро прямо в ISO-дерево
 	@mkdir -p iso/boot/grub # Создаём каталоги для GRUB
@@ -42,12 +43,25 @@ iso/boot/mykernel.bin: $(OBJ) linker.ld # Линкуем ядро прямо в 
 
 # цель iso больше ничего не копирует # Сборка ISO-образа с GRUB
 iso: iso/boot/mykernel.bin grub.cfg # Требует собранного ядра и конфигурации GRUB
-	mkdir -p iso/boot/grub # Убедиться, что каталог есть
-	cp grub.cfg iso/boot/grub/grub.cfg # Поместить grub.cfg в ISO-дерево
-	grub-mkrescue -o mykernel.iso iso # Создать ISO из папки iso/
+# Убедиться, что каталог есть
+	mkdir -p iso/boot/grub 
+# Поместить grub.cfg в ISO-дерево
+	cp grub.cfg iso/boot/grub/grub.cfg 
+# Создать ISO из папки iso/
+	@if command -v grub-mkrescue >/dev/null 2>&1; then \
+		echo "==> Using local grub-mkrescue"; \
+		grub-mkrescue -o mykernel.iso iso; \
+	elif command -v grub2-mkrescue >/dev/null 2>&1; then \
+		echo "==> Using local grub2-mkrescue"; \
+		grub2-mkrescue -o mykernel.iso iso; \
+	else \
+		echo "==> grub-mkrescue не найден локально. Перехожу на Docker фолбэк..."; \
+		$(MAKE) docker-iso; \
+	fi 
 # Standalone kernel binary (no ISO) # Сборка ядра без ISO
 mykernel.bin: $(OBJ) linker.ld
-	$(LD) $(LDFLAGS) -o $@ $(OBJ) # Линковка ELF ядра
+# Линковка ELF ядра
+	$(LD) $(LDFLAGS) -o $@ $(OBJ) 
 
 # iso: mykernel.bin # Альтернативный сценарий копирования бинаря в ISO
 # 	mkdir -p iso/boot/grub
@@ -56,17 +70,24 @@ mykernel.bin: $(OBJ) linker.ld
 # 	grub-mkrescue -o mykernel.iso iso
 
 run: iso # Запустить через GRUB/ISO в QEMU
-	qemu-system-i386 -cdrom mykernel.iso -m 512M -serial stdio # Сериал перенаправлен в терминал
+# Сериал перенаправлен в терминал
+	qemu-system-i386 -cdrom mykernel.iso -m 512M -serial stdio
 
 # Direct boot without GRUB/ISO (Multiboot kernel) # Прямой запуск ядра без ISO
 run-kernel: mykernel.bin
-	qemu-system-i386 -kernel mykernel.bin -m 512M -serial stdio # Быстрее, без GRUB
+# Быстрее, без GRUB
+	qemu-system-i386 -kernel mykernel.bin -m 512M -serial stdio 
 
+ 
+
+ 
 clean: # Очистить артефакты сборки
-	rm -f *.o mykernel.bin mykernel.iso # Удалить объектники и образы
+# Удалить объектники и образы
+	rm -f *.o mykernel.bin mykernel.iso
 	rm -rf iso # Удалить дерево ISO
-
-.PHONY: docker-image docker-bin docker-iso docker-run # Явные phony-цели
+ 
+# Явные phony-цели
+.PHONY: docker-image docker-bin docker-iso docker-run 
 
 DOCKER_IMAGE?=kfs-build:latest # Имя локального docker-образа
 
@@ -74,14 +95,19 @@ docker-image: # Собрать docker-образ с тулчейном
 	docker buildx build --platform linux/amd64 -t $(DOCKER_IMAGE) . --load # Гарантируем amd64
 
 docker-bin: docker-image # Собрать ядро внутри контейнера
-	docker run --rm -v $(PWD):/src -w /src $(DOCKER_IMAGE) /bin/bash -lc "make clean && make CC=i686-linux-gnu-gcc LD=i686-linux-gnu-ld ASM=nasm ASMFLAGS='-f elf32' CFLAGS='-ffreestanding -fno-builtin -nostdlib -Wall -Wextra -I.' LDFLAGS='-m elf_i386 -T linker.ld' mykernel.bin" # Жёстко фиксируем тулчейн
+# Жёстко фиксируем тулчейн
+	docker run --rm -v $(PWD):/src -w /src $(DOCKER_IMAGE) /bin/bash -lc "make clean && make CC=i686-linux-gnu-gcc LD=i686-linux-gnu-ld ASM=nasm ASMFLAGS='-f elf32' CFLAGS='-ffreestanding -fno-builtin -nostdlib -Wall -Wextra -I.' LDFLAGS='-m elf_i386 -T linker.ld' mykernel.bin" 
 
 docker-iso: docker-image # Собрать ISO в контейнере
-	docker run --rm -v $(PWD):/src -w /src $(DOCKER_IMAGE) /bin/bash -lc "make clean && make CC=i686-linux-gnu-gcc LD=i686-linux-gnu-ld ASM=nasm ASMFLAGS='-f elf32' CFLAGS='-ffreestanding -fno-builtin -nostdlib -Wall -Wextra -I.' LDFLAGS='-m elf_i386 -T linker.ld' iso" # Собрать ISO-образ
+# Собрать ISO-образ
+	docker run --rm -v $(PWD):/src -w /src $(DOCKER_IMAGE) /bin/bash -lc "make clean && make CC=i686-linux-gnu-gcc LD=i686-linux-gnu-ld ASM=nasm ASMFLAGS='-f elf32' CFLAGS='-ffreestanding -fno-builtin -nostdlib -Wall -Wextra -I.' LDFLAGS='-m elf_i386 -T linker.ld' iso" 
 
 docker-run: docker-iso # Запустить QEMU с ISO в контейнере
-	docker run --rm -it -v $(PWD):/src -w /src $(DOCKER_IMAGE) /bin/bash -lc "timeout 10s qemu-system-i386 -cdrom mykernel.iso -m 512M -serial stdio -display none || true" # Без GUI, только сериал
+# Без GUI, только сериал
+	docker run --rm -it -v $(PWD):/src -w /src $(DOCKER_IMAGE) /bin/bash -lc "timeout 10s qemu-system-i386 -cdrom mykernel.iso -m 512M -serial stdio -display none || true" 
 
 # Docker: run kernel directly (no GRUB/ISO), serial only # Прямой запуск ядра в контейнере
 docker-run-kernel: docker-bin
-	docker run --rm -it -v $(PWD):/src -w /src $(DOCKER_IMAGE) /bin/bash -lc "timeout 10s qemu-system-i386 -kernel mykernel.bin -m 512M -serial stdio -display none || true" # Быстрый тест
+# Быстрый тест
+	docker run --rm -it -v $(PWD):/src -w /src $(DOCKER_IMAGE) /bin/bash -lc "timeout 10s qemu-system-i386 -kernel mykernel.bin -m 512M -serial stdio -display none || true" 
+

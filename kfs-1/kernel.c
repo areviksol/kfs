@@ -37,7 +37,12 @@ static void serial_write(const char* s) { // Вывод строки в UART (CR
     }
 }
 
-void kmain() { // Точка входа C-части ядра (вызывается из boot.asm)
+void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) { // Точка входа C-части ядра (вызывается из boot.asm)
+    // Multiboot v1: EAX должен быть 0x2BADB002, EBX — адрес структуры multiboot_info
+    if (multiboot_magic != 0x2BADB002) { // Проверка, что нас загрузил совместимый загрузчик
+        while (1) {} // Неверный загрузчик — остановиться
+    }
+    (void)multiboot_info_addr; // Пока не используем структуру, подавить предупреждение
     volatile uint16_t* vga = (uint16_t*)0xB8000; // Адрес текстового буфера VGA
     vga[0] = '4' | (0x0F << 8);  // Напечатать '4' атрибутом ярко-белый на чёрном
     vga[1] = '2' | (0x0F << 8);  // Напечатать '2' рядом
