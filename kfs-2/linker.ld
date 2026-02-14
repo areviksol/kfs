@@ -1,19 +1,25 @@
-OUTPUT_FORMAT("elf32-i386")
-ENTRY(start)
+OUTPUT_FORMAT("elf32-i386") /* Выходной формат ELF для i386 (32-бит) */
+ENTRY(start) /* Точка входа — метка start из boot.asm */
 
-SECTIONS
+SECTIONS /* Разметка секций в адресном пространстве */
 {
-    /* Place the GDT at physical 0x00000800 (mandatory for the task) */
-    . = 0x00000800;
-    .gdt : {
-        KEEP(*(.gdt))
+    . = 0x100000;  /* Базовый адрес загрузки ядра: 1 МБ */
+
+    .multiboot : { *(.multiboot) } /* Заголовок Multiboot должен быть рано в образе */
+
+    .text : { /* Код */
+        *(.text) 
     }
 
-    /* Keep the multiboot header early in the kernel image (as before) */
-    . = 0x00100000;  /* Kernel load base: 1 MiB */
-    .multiboot : { *(.multiboot) }
+    .data : { /* Инициализированные данные */
+        *(.data)
+    }
 
-    .text : { *(.text) }
-    .data : { *(.data) }
-    .bss : { *(.bss COMMON) }
+    .gdt 0x00000800 : AT(0x00000800) { /* GDT placed at fixed address 0x00000800 */
+        *(.gdt)
+    }
+
+    .bss : { /* Неинициализированные данные (включая стек) */
+        *(.bss)
+    }
 }

@@ -1,52 +1,80 @@
-# Базовый образ Ubuntu LTS
-FROM ubuntu:22.04 
+FROM debian:bookworm
 
-# Отключить интерактивные диалоги apt
-ENV DEBIAN_FRONTEND=noninteractive 
-
-# Install build tools (no multiarch on arm64) and GRUB utils for ISO # Инструменты сборки и утилиты для ISO
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        build-essential \
-        bison \
-        flex \
-        parted \
-        e2fsprogs \
-        nasm \
-        xorriso \
-        grub-common \
-        grub-pc-bin \
-        mtools \
-        qemu-system-x86 \
-        wget \
-        curl \
-        git \
-        libncurses-dev \
-        libssl-dev \
-        libelf-dev \
-        ca-certificates \
-    && apt-get clean \
+# ------------------------------
+# Install dependencies
+# ------------------------------
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    bison \
+    flex \
+    libgmp3-dev \
+    libmpc-dev \
+    libmpfr-dev \
+    texinfo \
+    wget \
+    curl \
+    xz-utils \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
-# Install i386 cross toolchain (works on arm64 host) # Кросс-тулчейн для i686
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        binutils-i686-linux-gnu \
-        gcc-i686-linux-gnu \
-        g++-i686-linux-gnu \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+# ------------------------------
+# Set versions
+# ------------------------------
+ENV BINUTILS_VERSION=2.42
+ENV GCC_VERSION=14.1.0
+ENV TARGET=i686-elf
+ENV PREFIX=/opt/cross
+ENV PATH="$PREFIX/bin:$PATH"
 
-# Set environment for cross-compilation # Переменные окружения для кросс-сборки
-ENV CC=i686-linux-gnu-gcc
-ENV CXX=i686-linux-gnu-g++
-ENV LD=i686-linux-gnu-ld
-ENV AS=i686-linux-gnu-as
-ENV AR=i686-linux-gnu-ar
-ENV NM=i686-linux-gnu-nm
-ENV OBJDUMP=i686-linux-gnu-objdump
-ENV OBJCOPY=i686-linux-gnu-objcopy
+# ------------------------------
+# Download sources
+# ------------------------------
+WORKDIR /tmp
 
-WORKDIR /src # Рабочая директория внутри контейнера
+RUN wget https://ftp.gnu.org/gnu/binutils/binutils-$BINUTILS_VERSION.tar.xz && \
+    wget https://ftp.gnu.org/gnu/gcc/gcc-$GCC_VERSION/gcc-$GCC_VERSION.tar.xz && \
+    tar -xf binutils-$BINUTILS_VERSION.tar.xz && \
+    tar -xf gcc-$GCC_VERSION.tar.xz
 
-CMD ["/bin/bash"] # Контейнер по умолчанию открывает bash
+# ------------------------------
+# Build binutils
+# ------------------------------
+RUN mkdir build-binutils && cd build-binutils && \
+    ../binutils-$BINUTILS_VERSION/configure \
+        --target=$TARGET \
+        --prefix=$PREFIX \
+        --with-sysroot \
+        --disable-nls \
+        --disable-werror && \
+    make -j$(nproc) && \
+    make install
+
+# ------------------------------
+# Build GCC (C only)
+# ------------------------------
+RUN mkdir build-gcc && cd build-gcc && \
+    ../gcc-$GCC_VERSION/configure \
+        --target=$TARGET \
+        --prefix=$PREFIX \
+        --disable-nls \
+        --enable-languages=c \
+        --without-headers \
+        --disable-shared \
+        --disable-threads \
+        --disable-multilib && \
+    make -j$(nproc) all-gcc && \
+    make -j$(nproc) all-target-libgcc && \
+    make install-gcc && \
+    make install-target-libgcc
+
+# ------------------------------
+# Clean up
+# ------------------------------
+RUN rm -rf /tmp/*
+
+# ------------------------------
+# Export PATH
+# ------------------------------
+ENV PATH="$PREFIX/bin:$PATH"
+
+CMD ["/bin/bash"]

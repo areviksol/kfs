@@ -1,127 +1,74 @@
-/* kernel.c -- uses printk() (printf-style) and print_stack() */
-#include <stdint.h>
-#include <stdarg.h>
-#include "types.h"
-#include "lib.h"
-#include "printf.h"
+#include <stdint.h> // Подключает фиксированные целочисленные типы стандартной библиотеки C (uint8_t, uint16_t и т. д.)
+#include "types.h" // Типы ядра и запасной typedef для size_t на 32-бит
+#include "lib.h" // Объявления базовых функций (strlen, strcmp, memset, memcpy)
+#include "gdt.h" // GDT initialization
+#include "printk.h" // printk and stack printing functions
+#include "shell.h" // Debugging shell
+#include "idt.h" // IDT initialization
+#include "pic.h" // PIC initialization
+#include "keyboard.h" // Keyboard support
 
-/* gdt init from gdt.asm */
-extern void gdt_init(void);
-
-/* boot.asm defines these labels (stack_space/resb and stack_end) */
-extern uint8_t stack_space;
-extern uint8_t stack_end;
-
-/* I/O helpers (same as your previous implementations) */
-static inline void outb(uint16_t port, uint8_t val) {
-    __asm__ volatile ("outb %0, %1" : : "a"(val), "Nd"(port));
-}
-static inline uint8_t inb(uint16_t port) {
-    uint8_t ret;
-    __asm__ volatile ("inb %1, %0" : "=a"(ret) : "Nd"(port));
-    return ret;
+static inline void outb(uint16_t port, uint8_t val) { // Запись одного байта в порт ввода/вывода (I/O)
+    __asm__ volatile ("outb %0, %1" : : "a"(val), "Nd"(port)); // asm-инструкция outb: al -> [dx]
 }
 
-static void serial_init(void) {
-    const uint16_t base = 0x3F8;
-    outb(base + 1, 0x00);
-    outb(base + 3, 0x80);
-    outb(base + 0, 0x03);
-    outb(base + 1, 0x00);
-    outb(base + 3, 0x03);
-    outb(base + 2, 0xC7);
-    outb(base + 4, 0x0B);
+static inline uint8_t inb(uint16_t port) { // Чтение одного байта из порта ввода/вывода (I/O)
+    uint8_t ret; // Регистр AL (через констрейнт "=a") вернёт считанный байт
+    __asm__ volatile ("inb %1, %0" : "=a"(ret) : "Nd"(port)); // asm-инструкция inb: [dx] -> al
+    return ret; // Возвращаем полученное значение
 }
 
-/* Serial writer: writes without automatic newline, but preserves CRLF behavior for \\n */
-static void serial_write_char(char c) {
-    const uint16_t base = 0x3F8;
-    while ((inb(base + 5) & 0x20) == 0) { }
-    outb(base + 0, (uint8_t)c);
-}
-
-static void serial_write(const char* s) {
-    for (; *s; ++s) {
-        if (*s == '\n') serial_write_char('\r');
-        serial_write_char(*s);
+void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) { // Точка входа C-части ядра (вызывается из boot.asm)
+    // Multiboot v1: EAX должен быть 0x2BADB002, EBX — адрес структуры multiboot_info
+    if (multiboot_magic != 0x2BADB002) { // Проверка, что нас загрузил совместимый загрузчик
+        while (1) {} // Неверный загрузчик — остановиться
     }
-}
-
-/* VGA simple writer */
-static volatile uint16_t* const VGABUF = (uint16_t*)0xB8000;
-static int vga_row = 0, vga_col = 0;
-static const uint8_t VGA_ATTR = 0x07;
-
-static void vga_putc(char c) {
-    if (c == '\n') { vga_col = 0; vga_row++; return; }
-    VGABUF[vga_row*80 + vga_col] = ((uint16_t)VGA_ATTR << 8) | (uint8_t)c;
-    vga_col++;
-    if (vga_col >= 80) { vga_col = 0; vga_row++; }
-}
-
-/* printk: format into buffer, write to VGA and serial */
-int printk(const char* fmt, ...) {
-    char buf[512];
-    va_list ap;
-    va_start(ap, fmt);
-    int len = vsnprintf(buf, sizeof(buf), fmt, ap);  // make sure vsnprintf is in printf.c
-    va_end(ap);
-
-    for (int i=0; i<len; i++) vga_putc(buf[i]);
-    serial_write(buf);
-    return len;
-}
-
-
-/* Set SS:ESP to kernel stack (stack_end label) using kernel stack selector 0x18 */
-void set_kernel_stack_and_enter(void) {
-    uint32_t stack_top = (uint32_t)&stack_end;
-    asm volatile (
-        "movw $0x18, %%ax\n"
-        "movw %%ax, %%ss\n"
-        "movl %0, %%esp\n"
-        : : "r"(stack_top) : "ax"
-    );
-}
-
-/* Walk saved EBP frames and print a human-friendly trace */
-void print_stack(void) {
-    uint32_t *ebp;
-    asm volatile ("movl %%ebp, %0" : "=r"(ebp));
-
-    printk("--- kernel stack trace ---");
-    int frame = 0;
-    while (ebp && frame < 5) {
-        uint32_t saved_ebp = ebp[0];
-        uint32_t ret = ebp[1];
-        printk("frame %02d: ebp=%p ret=%p", frame, ebp, (void*)ret);
-        frame++;
-        if (saved_ebp == 0 || saved_ebp == (uint32_t)ebp) break;
-        ebp = (uint32_t*)saved_ebp;
-    }
-    printk("--- end stack ---");
-}
-
-/* kernel entrypoint */
-void kmain(uint32_t multiboot_magic, uint32_t multiboot_info_addr) {
-    (void)multiboot_info_addr;
-
-    if (multiboot_magic != 0x2BADB002) {
-        while (1) { asm volatile("hlt"); }
-    }
-
-    serial_init();
-
-    printk("Calling gdt_init()...\n");
+    (void)multiboot_info_addr; // Пока не используем структуру, подавить предупреждение
+    
+    /* Initialize the GDT */
     gdt_init();
-    printk("gdt_init() returned.\n");
+    
+    volatile uint16_t* vga = (uint16_t*)0xB8000; // Адрес текстового буфера VGA
+    vga[0] = '4' | (0x0F << 8);  // Напечатать '4' атрибутом ярко-белый на чёрном
+    vga[1] = '2' | (0x0F << 8);  // Напечатать '2' рядом
 
-    // Set kernel stack
-    set_kernel_stack_and_enter();
-    printk("Kernel stack set (ss=0x18) at ESP=%p\n", &stack_end);
+    /* Initialize and use printk */
+    printk("\n========================================\n");
+    printk("Kernel 42 - KFS-2\n");
+    printk("========================================\n\n");
+    
+    printk("GDT initialized successfully!\n");
+    printk("GDT Base Address: 0x00000800\n");
+    printk("GDT Descriptors: %d\n", 7);
+    printk("  - Null Descriptor\n");
+    printk("  - Kernel Code Segment (0x08)\n");
+    printk("  - Kernel Data Segment (0x10)\n");
+    printk("  - Kernel Stack Segment (0x18)\n");
+    printk("  - User Code Segment (0x23)\n");
+    printk("  - User Data Segment (0x2B)\n");
+    printk("  - User Stack Segment (0x33)\n\n");
+    
+    /* Display kernel stack information */
+    print_stack();
+    
+    /* Initialize interrupts */
+    printk("Initializing PIC...\n");
+    pic_init();
+    
+    printk("Initializing IDT...\n");
+    idt_init();
+    
+    /* Initialize keyboard */
+    printk("Initializing keyboard...\n");
+    keyboard_init();
+    
+    /* Enable interrupts */
+    __asm__ volatile("sti");  /* Set Interrupt Flag */
+    
+    /* Initialize and start the debugging shell */
+    shell_init();
+    shell_main_loop();
 
-    // Comment out print_stack() for now
-    // print_stack();
-
-    while (1) { asm volatile("hlt"); }
+    while(1); // Бесконечный цикл, чтобы ядро не завершилось
 }
+
