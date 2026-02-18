@@ -11,7 +11,7 @@ ASMFLAGS = -f elf32
 CFLAGS   = -m32 -ffreestanding -fno-stack-protector -nostdlib -Wall -Wextra -I.
 LDFLAGS  = -m elf_i386 -T linker.ld
 
-ASM_SRC = $(wildcard *.asm)
+ASM_SRC = $(filter-out gdt.asm gdt_old.asm,$(wildcard *.asm))
 C_SRC   = $(wildcard *.c)
 OBJ     = $(ASM_SRC:.asm=.o) $(C_SRC:.c=.o)
 
@@ -24,8 +24,16 @@ ISO    = mykernel.iso
 
 all: $(KERNEL)
 
+# Explicit rule to prevent gdt.asm from creating gdt.o
+gdt.o: gdt.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
 %.o: %.asm
-	$(ASM) $(ASMFLAGS) $< -o $@
+	@if [ "$<" = "gdt.asm" ] || [ "$<" = "gdt_old.asm" ]; then \
+		echo "Skipping $< (excluded from build)"; \
+	else \
+		$(ASM) $(ASMFLAGS) $< -o $@; \
+	fi
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@

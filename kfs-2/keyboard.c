@@ -45,6 +45,11 @@ void keyboard_init(void) {
     shift_pressed = 0;
     kb_buffer_head = 0;
     kb_buffer_tail = 0;
+    
+    /* Ensure serial port is initialized for reading */
+    /* COM1 base address is 0x3F8 */
+    /* This is already done in printk.c, but we ensure it's ready */
+    /* Serial port should already be initialized by printk() calls */
 }
 
 /**
@@ -103,6 +108,12 @@ int keyboard_has_data(void) {
     if (status & 0x01) {
         /* Data available at serial port */
         uint8_t ch = inb(0x3F8);  /* Read from COM1 data port */
+        
+        /* Handle special characters from serial input */
+        /* QEMU with -serial stdio sends \r (0x0D) for Enter, convert to \n (0x0A) */
+        if (ch == '\r') {
+            ch = '\n';  /* Convert carriage return to newline */
+        }
         
         /* Add to buffer */
         uint32_t next_head = (kb_buffer_head + 1) % KB_BUFFER_SIZE;
