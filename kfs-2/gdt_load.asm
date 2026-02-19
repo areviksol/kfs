@@ -30,16 +30,3 @@ gdt_load:
     
     pop ebp
     ret
-
-; void get_stack_pointer(uint32_t *esp_ptr)
-; Get the current stack pointer value
-; This is used by printk to display the stack
-global get_stack_pointer
-get_stack_pointer:
-    push ebp
-    mov ebp, esp
-    mov eax, [ebp + 8]      ; EAX = pointer to uint32_t
-    mov ecx, [ebp + 4]      ; ECX = return address (ESP before this function)
-    mov [eax], ecx          ; Store the old ESP into the provided pointer
-    pop ebp
-    ret
